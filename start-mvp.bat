@@ -1,0 +1,57 @@
+@echo off
+REM Script de démarrage pour MVP Insurance - Pitch Investisseurs
+REM Lance le backend FastAPI + 2 frontends React en parallèle
+
+echo.
+echo ================================================
+echo   INSURANCE MVP - STARTUP MULTI-SERVICES
+echo ================================================
+echo.
+
+echo [1/3] Installation des dépendances Python (Backend)...
+cd backend
+pip install -r requirements.txt >nul 2>&1
+
+echo [2/3] Installation des dépendances Node (Frontend Client)...
+cd ..\frontend-client
+call npm install >nul 2>&1
+
+echo [3/3] Installation des dépendances Node (Frontend Advisor)...
+cd ..\frontend-advisor
+call npm install >nul 2>&1
+
+echo.
+echo ================================================
+echo   DÉMARRAGE DES SERVICES
+echo ================================================
+echo.
+
+REM Lancer le backend FastAPI
+echo Démarrage Backend FastAPI (port 8000)...
+cd ..\backend
+start /B cmd /k "python main.py"
+
+REM Attendre que le backend soit prêt
+timeout /t 3 /nobreak
+
+REM Lancer les frontends
+echo Démarrage Frontend Client (port 3000)...
+cd ..\frontend-client
+start /B cmd /k "npm run dev"
+
+echo Démarrage Frontend Advisor (port 3001)...
+cd ..\frontend-advisor
+start /B cmd /k "npm run dev"
+
+echo.
+echo ================================================
+echo   SERVICES LANCÉS
+echo ================================================
+echo.
+echo ✅ Backend FastAPI:    http://localhost:8000
+echo ✅ Frontend Client:    http://localhost:3000
+echo ✅ Frontend Advisor:   http://localhost:3001
+echo.
+echo 📋 API Docs:          http://localhost:8000/docs
+echo.
+pause

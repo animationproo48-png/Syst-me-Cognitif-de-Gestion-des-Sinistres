@@ -1,0 +1,29 @@
+# Dépendances principales
+streamlit>=1.30.0
+pydantic>=2.5.0
+
+# Environment & Configuration
+python-dotenv>=1.0.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Speech & Audio
+gtts>=2.5.0
+SpeechRecognition>=3.10.0
+
+# Whisper (optionnel - pour modèle local)
+# openai-whisper>=20231117
+
+# LLM & AI
+groq>=0.4.0                    # API Groq pour analyse cognitive (LLM rapide)
+google-genai>=1.60.0           # API Gemini pour analyse cognitive & traduction
+# openai>=1.10.0               # (Optionnel) OpenAI pour cognitive engine avancé
+# anthropic>=0.18.0            # (Optionnel) Anthropic Claude
+
+# Data & Database
+pandas>=2.1.0
+numpy>=1.24.0
+
+# Utils
+python-dateutil>=2.8.2
