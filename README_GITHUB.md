@@ -338,8 +338,8 @@ Ce projet est sous licence MIT. Voir [LICENSE](LICENSE) pour plus de détails.
 
 ## 👥 Équipe
 
-- **Architecture AI:** Senior AI Engineer
-- **Domaine Métier:** Expert Assurance
+- **Architecture AI:** Badr Eddine Tadlaoui AI Engineer
+- **Domaine Métier:** M Expert Assurance
 - **UX/Product:** Interface Métier
 
 ---
@@ -352,9 +352,9 @@ Ce projet est sous licence MIT. Voir [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-## 🏆 Récompenses
+##  Compétition
 
-🥇 **Hackathon AssurTech Innovation 2026** - MVP Fonctionnel
+ **Hackathon AssurTech Innovation 2026** - MVP Fonctionnel
 
 ---
 
