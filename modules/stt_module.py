@@ -86,33 +86,32 @@ class STTEngine:
         if metadata is None:
             return self._simulate_error()
 
-        # ÉTAPE 2 : TRADUCTION SI LANGUE ARABE DÉTECTÉE
+        # ÉTAPE 2 : TRADUCTION SI LANGUE NON-FRANÇAISE DÉTECTÉE
         # -----------------------------------------------
-        # Vérifier toutes les variantes d'arabe (ar, ara, arabic, ar-MA, ar-EG, etc.)
         detected_lang = metadata.language.lower() if metadata.language else ""
-        is_arabic = any(marker in detected_lang for marker in ["ar", "arabic", "عربي"])
         
-        # Si langue inconnue, vérifier si le texte contient des caractères arabes
-        if not is_arabic and detected_lang in ["unknown", "", "none"]:
-            has_arabic_chars = bool(re.search(r'[\u0600-\u06FF]', metadata.original_transcript))
-            if has_arabic_chars:
-                is_arabic = True
-                print("🔍 Détection: Caractères arabes trouvés dans le texte")
+        # Vérifier si c'est du français
+        is_french = any(marker in detected_lang for marker in ["fr", "french", "français"])
         
-        if is_arabic:
-            if self.groq_key:
-                print(f"🤖 Langue arabe détectée - Lancement traduction Groq...")
-                translation = self._translate_with_llm(metadata.original_transcript)
-                
-                if translation:
-                    metadata.normalized_transcript = translation
-                    print(f"✅ Traduction: {translation[:80]}...")
-                else:
-                    print("⚠️ Traduction échouée, conservation du texte original.")
+        # Détecter si le texte contient de l'arabe/darija (caractères arabes)
+        contains_arabic = bool(re.search(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]", metadata.original_transcript))
+        is_arabic_lang = any(marker in detected_lang for marker in ["ar", "arab", "arabic", "darija"])
+
+        # Traduire uniquement si arabe/darija détecté
+        if (is_arabic_lang or contains_arabic) and self.groq_key:
+            print(f"🤖 Arabe/Darija détecté ({metadata.language}) - Traduction Groq...")
+            translation = self._translate_with_llm(metadata.original_transcript)
+            
+            if translation:
+                metadata.normalized_transcript = translation
+                metadata.language = "fr"  # Après traduction, langue = fr
+                print(f"✅ Traduction FR: {translation[:80]}...")
             else:
-                print("⚠️ Pas de clé Groq - traduction désactivée")
+                print("⚠️ Traduction échouée, conservation du texte original.")
+        elif is_french or (detected_lang in ["unknown", "", "none"] and not contains_arabic):
+            print("ℹ️ Français détecté ou texte latin - Pas de traduction nécessaire")
         else:
-            print(f"ℹ️ Langue détectée: {metadata.language} - Pas de traduction nécessaire")
+            print("ℹ️ Langue non-fr détectée mais pas d'arabe - Pas de traduction automatique")
 
         return metadata
 

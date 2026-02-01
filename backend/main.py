@@ -3,9 +3,13 @@ Backend FastAPI pour MVP Gestion Cognitive des Sinistres
 Exposes les modules Python en API REST + WebSocket temps réel
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # Charger .env au démarrage
+
 from fastapi import FastAPI, UploadFile, File, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pathlib import Path
 import sys
@@ -65,6 +69,23 @@ class ConversationMessage(BaseModel):
 # Stockage des sessions (en mémoire pour MVP)
 active_sessions = {}
 
+# Helper pour TTS
+def generate_tts_audio(text: str, tts_engine: TTSEngine) -> str:
+    """Génère l'audio TTS et retourne le chemin"""
+    try:
+        audio_path = tts_engine.synthesize(text, tone="professional")
+        return audio_path
+    except Exception as e:
+        print(f"❌ Erreur TTS: {e}")
+        return None
+
+def build_audio_url(audio_path: str) -> str:
+    """Construit l'URL audio servie par /audio/{filename}."""
+    if not audio_path:
+        return None
+    filename = Path(audio_path).name
+    return f"/audio/{filename}"
+
 # ===== ENDPOINTS SANTÉ =====
 
 @app.get("/health")
@@ -75,6 +96,14 @@ def health_check():
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0"
     }
+
+@app.get("/audio/{filename}")
+def serve_audio(filename: str):
+    """Servir les fichiers audio générés"""
+    audio_path = Path(f"c:/Users/HP/Inssurance Advanced/data/audio_responses/{filename}")
+    if audio_path.exists():
+        return FileResponse(audio_path, media_type="audio/mpeg")
+    raise HTTPException(status_code=404, detail="Audio not found")
 
 # ===== ENDPOINTS DÉCLARATION SINISTRE =====
 
@@ -194,10 +223,18 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
     WebSocket pour conversation temps réel
     Flux: Client STT → Backend Analyse → TTS → Client
     """
-    await websocket.accept()
+    print(f"🔌 WebSocket: Connexion tentée pour session {session_id}")
+    
+    try:
+        await websocket.accept()
+        print(f"✅ WebSocket: Connexion acceptée pour {session_id}")
+    except Exception as e:
+        print(f"❌ WebSocket: Erreur accept - {e}")
+        return
     
     try:
         # Initialiser une session de conversation
+        print(f"📝 WebSocket: Création du claim...")
         claim_id = f"CLM-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         digital_twin = ClaimDigitalTwin(
             claim_id=claim_id,
@@ -205,6 +242,7 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
             timestamp=datetime.now()
         )
         
+        print(f"🧠 WebSocket: Initialisation du ConversationManager...")
         conversation_manager = ConversationManager(digital_twin)
         active_sessions[session_id] = {
             "claim_id": claim_id,
@@ -214,20 +252,41 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
         }
         
         # Accueil initial
+        print(f"🔊 WebSocket: Initialisation du TTSEngine...")
         tts_engine = TTSEngine(language="fr")
+        print(f"✅ TTS engine type: {tts_engine.engine}")
+        
         greeting = conversation_manager.get_greeting_prompt()
         
-        await websocket.send_json({
+        # Générer l'audio TTS
+        audio_path = generate_tts_audio(greeting, tts_engine)
+        
+        print(f"📤 WebSocket: Envoi du greeting...")
+        response_data = {
             "type": "greeting",
             "message": greeting,
             "claim_id": claim_id
-        })
+        }
+        
+        if audio_path:
+            # Convertir le chemin en URL relative servie par /audio/{filename}
+            filename = Path(audio_path).name
+            audio_url = f"/audio/{filename}"
+            response_data["audio_url"] = audio_url
+            print(f"🔊 Audio TTS inclus: {audio_url}")
+        
+        await websocket.send_json(response_data)
+        print(f"✅ WebSocket: Greeting envoyé!")
         
         conversation_manager.current_phase = ConversationPhase.LISTEN
         
         # Boucle de conversation
         while True:
-            data = await websocket.receive_json()
+            try:
+                data = await websocket.receive_json()
+            except Exception as e:
+                print(f"WebSocket closed: {e}")
+                break
             
             if data["type"] == "user_text":
                 user_text = data["text"]
@@ -262,53 +321,78 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
                         }
                     )
                     
+                    response_text = f"{ack_text}\n\n{summary_text}\n\n{next_q}"
+                    audio_path = generate_tts_audio(response_text, tts_engine)
+                    audio_url = build_audio_url(audio_path)
+                    
                     await websocket.send_json({
                         "type": "response",
                         "acknowledge": ack_text,
                         "summary": summary_text,
                         "next_question": next_q,
-                        "phase": manager.current_phase.value
+                        "phase": manager.current_phase.value,
+                        "audio_url": audio_url
                     })
                 
                 elif manager.current_phase == ConversationPhase.ASK_CALLER_ID:
                     next_q = manager.process_caller_identification(user_text)
                     
+                    response_text = f"Merci. {next_q}"
+                    audio_path = generate_tts_audio(response_text, tts_engine)
+                    audio_url = build_audio_url(audio_path)
+                    
                     await websocket.send_json({
                         "type": "response",
                         "next_question": next_q,
                         "phase": manager.current_phase.value,
-                        "message": f"Merci. {next_q}"
+                        "message": response_text,
+                        "audio_url": audio_url
                     })
                 
                 elif manager.current_phase == ConversationPhase.ASK_VEHICLE:
                     next_q = manager.process_vehicle_info(user_text)
                     
+                    response_text = f"Parfait. {next_q}"
+                    audio_path = generate_tts_audio(response_text, tts_engine)
+                    audio_url = build_audio_url(audio_path)
+                    
                     await websocket.send_json({
                         "type": "response",
                         "next_question": next_q,
                         "phase": manager.current_phase.value,
-                        "message": f"Parfait. {next_q}"
+                        "message": response_text,
+                        "audio_url": audio_url
                     })
                 
                 elif manager.current_phase == ConversationPhase.ASK_NAME:
                     next_q = manager.process_name_confirmation(user_text)
                     
+                    response_text = f"Très bien, {user_text}. {next_q}"
+                    audio_path = generate_tts_audio(response_text, tts_engine)
+                    audio_url = build_audio_url(audio_path)
+                    
                     await websocket.send_json({
                         "type": "response",
                         "next_question": next_q,
                         "phase": manager.current_phase.value,
-                        "message": f"Très bien, {user_text}. {next_q}"
+                        "message": response_text,
+                        "audio_url": audio_url
                     })
                 
                 elif manager.current_phase == ConversationPhase.ASK_CIN:
                     closing_q = manager.process_cin(user_text)
                     
+                    response_text = f"Merci. Toutes les informations requises ont été collectées. {closing_q}"
+                    audio_path = generate_tts_audio(response_text, tts_engine)
+                    audio_url = build_audio_url(audio_path)
+                    
                     await websocket.send_json({
                         "type": "response",
                         "next_question": closing_q,
                         "phase": manager.current_phase.value,
-                        "message": f"Merci. Toutes les informations requises ont été collectées. {closing_q}",
-                        "completed": True
+                        "message": response_text,
+                        "completed": True,
+                        "audio_url": audio_url
                     })
 
                     # 🔍 Analyse + Classification + Ajout CRM (après collecte complète)
@@ -374,7 +458,11 @@ async def websocket_conversation(websocket: WebSocket, session_id: str):
                 break
     
     except Exception as e:
-        await websocket.send_json({"type": "error", "message": str(e)})
+        print(f"WebSocket error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass  # La connexion est déjà fermée
     
     finally:
         if session_id in active_sessions:
@@ -446,6 +534,23 @@ def get_statistics():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/test-tts")
+def test_tts_engine():
+    """Test du moteur TTS (debug)"""
+    try:
+        tts = TTSEngine(language="fr")
+        return {
+            "engine": tts.engine,
+            "elevenlabs_key_loaded": bool(tts.elevenlabs_key),
+            "status": "OK"
+        }
+    except Exception as e:
+        return {
+            "engine": "error",
+            "error": str(e),
+            "status": "FAILED"
+        }
 
 if __name__ == "__main__":
     import uvicorn

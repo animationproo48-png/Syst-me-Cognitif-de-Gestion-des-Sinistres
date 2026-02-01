@@ -12,22 +12,59 @@ from pathlib import Path
 class TTSEngine:
     """Moteur de synthèse vocale Text-to-Speech"""
     
-    def __init__(self, language: str = "fr", use_lemonfoxx: bool = True):
+    # Voix disponibles ElevenLabs
+    AVAILABLE_VOICES = {
+        "george": {"id": "JBFqnCBsd6RMkjVDRZzb", "language": "fr", "gender": "male", "description": "Voix masculine chaleureuse, conteur captivant (multilingue)"},
+        "alice": {"id": "Xb7hH8MSUJpSbSDYk0k2", "language": "fr", "gender": "female", "description": "Voix féminine claire, éducatrice professionnelle (British)"},
+        "eric": {"id": "cjVigY5qzO86Huf0OWal", "language": "fr", "gender": "male", "description": "Voix masculine lisse, digne de confiance"},
+        "jessica": {"id": "cgSgspJ2msm6clMCkdW9", "language": "fr", "gender": "female", "description": "Voix féminine joyeuse, chaleureuse et lumineuse"},
+        "will": {"id": "bIHbv24MWmeRgasZH58o", "language": "fr", "gender": "male", "description": "Voix masculine relaxée, optimiste"},
+        "roger": {"id": "CwhRBWXzGAHq8TQ4Fs17", "language": "fr", "gender": "male", "description": "Voix masculine décontractée, causelle, résonnante"},
+        "sarah": {"id": "EXAVITQu4vr4xnSDxMaL", "language": "fr", "gender": "female", "description": "Voix féminine mûre, rassurante, confiante"},
+    }
+    
+    def __init__(self, language: str = "fr", use_lemonfoxx: bool = True, voice: str = None):
         """
         Initialise le moteur TTS
         
         Args:
             language: Code langue (fr, ar, en)
             use_lemonfoxx: Inutilisé (maintient la compatibilité)
+            voice: Nom de la voix (george, alice, eric, jessica, will, roger, sarah) ou voice_id
         """
         import os
         from dotenv import load_dotenv
         load_dotenv()
         
         self.language = language
+        self.voice_name = voice or self._get_default_voice(language)
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         self.engine = None
         self._initialize_engine()
+    
+    def _get_default_voice(self, language: str) -> str:
+        """Retourne la voix par défaut selon la langue"""
+        default_voices = {
+            "fr": "george",      # George - warm, trustworthy (meilleur pour FR)
+            "ar": "roger",       # Roger support AR
+            "en": "sarah"        # Sarah - professional
+        }
+        return default_voices.get(language, "george")
+    
+    def get_voice_id(self, voice_name: str = None) -> str:
+        """Retourne le voice_id pour une voix donnée"""
+        voice_name = voice_name or self.voice_name
+        
+        # Si c'est un voice_id direct (UUID-like), retourner tel quel
+        if len(voice_name) > 20 and voice_name.startswith(("J", "C", "E", "g", "p")):
+            return voice_name
+        
+        # Sinon chercher dans le mapping
+        if voice_name.lower() in self.AVAILABLE_VOICES:
+            return self.AVAILABLE_VOICES[voice_name.lower()]["id"]
+        
+        # Fallback: Bella
+        return self.AVAILABLE_VOICES["bella"]["id"]
     
     def _initialize_engine(self):
         """Initialise le moteur TTS approprié"""
@@ -59,7 +96,8 @@ class TTSEngine:
         self, 
         text: str, 
         output_path: Optional[str] = None,
-        tone: str = "professional"
+        tone: str = "professional",
+        voice: str = None
     ) -> str:
         """
         Synthétise du texte en audio
@@ -68,6 +106,7 @@ class TTSEngine:
             text: Texte à synthétiser
             output_path: Chemin de sortie (généré auto si None)
             tone: Ton de la voix (professional, empathetic, neutral)
+            voice: Nom de la voix (bella, adam, sarah, rachel, ethan, serena) ou voice_id
             
         Returns:
             Chemin du fichier audio généré
@@ -75,6 +114,10 @@ class TTSEngine:
         if not text or text.strip() == "":
             print("⚠️ Texte vide, pas de synthèse audio")
             return None
+        
+        # Si une voix différente est spécifiée, la sauvegarder
+        if voice:
+            self.voice_name = voice
         
         # Préparer le texte selon le ton
         prepared_text = self._prepare_text_for_tone(text, tone)
@@ -123,29 +166,36 @@ class TTSEngine:
     def _synthesize_elevenlabs(self, text: str, output_path: str) -> str:
         """Synthèse avec ElevenLabs (voix naturelle, professionnel)"""
         try:
-            from elevenlabs import generate, stream
+            print(f"🎤 [ELEVENLABS] Début synthèse...")
+            from elevenlabs.client import ElevenLabs
             
-            # Mapper langue vers voix simples et stables
-            voice_map = {
-                "fr": "Bella",      # Voix féminine naturelle (multilingue)
-                "ar": "Adam",       # Voix masculine pour arabe
-                "en": "Rachel"      # Voix féminine anglaise
-            }
-            voice = voice_map.get(self.language, "Bella")
+            # Initialiser client officiel
+            print(f"🔑 [ELEVENLABS] Clé API présente: {bool(self.elevenlabs_key)}")
+            client = ElevenLabs(api_key=self.elevenlabs_key)
             
-            # Générer l'audio
-            audio = generate(
+            # Récupérer le voice_id
+            voice_id = self.get_voice_id(self.voice_name)
+            print(f"🎙️ [ELEVENLABS] Voix sélectionnée: {self.voice_name} ({voice_id})")
+            
+            # Convertir texte en audio avec API officielle
+            print(f"📡 [ELEVENLABS] Appel API convert...")
+            audio_generator = client.text_to_speech.convert(
+                voice_id=voice_id,
                 text=text,
-                voice=voice,
-                api_key=self.elevenlabs_key,
-                model="eleven_multilingual_v2"  # Meilleure qualité
+                model_id="eleven_multilingual_v2",
+                output_format="mp3_44100_128"
             )
             
-            # Sauvegarder l'audio
+            # Sauvegarder l'audio (c'est un generator, pas bytes direct)
             with open(output_path, 'wb') as f:
-                f.write(audio)
+                for chunk in audio_generator:
+                    f.write(chunk)
             
-            print(f"🔊 Audio généré (ElevenLabs v2): {output_path}")
+            print(f"✅ [ELEVENLABS] Audio reçu et sauvegardé")
+            
+            print(f"💾 [ELEVENLABS] Fichier sauvegardé: {output_path}")
+            
+            print(f"🔊 Audio généré (ElevenLabs API officielle): {output_path}")
             return output_path
             
         except Exception as e:
@@ -181,41 +231,7 @@ class TTSEngine:
             print(f"❌ Erreur pyttsx3: {e}")
             return self._synthesize_gtts(text, output_path)
     
-    def _synthesize_elevenlabs(self, text: str, output_path: str) -> str:
-        """Synthèse avec ElevenLabs (voix naturelle, professionnel)"""
-        try:
-            from elevenlabs import generate, stream, set_api_key
-            
-            # S'assurer que la clé API est définie
-            set_api_key(self.elevenlabs_key)
-            
-            # Mapper langue vers voix
-            voice_map = {
-                "fr": "Serena",     # Voix française naturelle
-                "ar": "Adam",       # Voix pour arabe
-                "en": "Rachel"      # Voix anglaise
-            }
-            
-            voice = voice_map.get(self.language, "Rachel")
-            
-            # Générer l'audio
-            audio = generate(
-                text=text,
-                voice=voice,
-                model="eleven_multilingual_v2"
-            )
-            
-            # Sauvegarder l'audio
-            with open(output_path, 'wb') as f:
-                f.write(audio)
-            
-            print(f"🔊 Audio généré (ElevenLabs): {output_path}")
-            return output_path
-            
-        except Exception as e:
-            print(f"⚠️ ElevenLabs échoué ({str(e)[:80]}...), fallback pyttsx3...")
-            self.engine = "pyttsx3"
-            return self._synthesize_pyttsx3(text, output_path)
+
     
     def _simulate_synthesis(self, text: str, output_path: str) -> str:
         """

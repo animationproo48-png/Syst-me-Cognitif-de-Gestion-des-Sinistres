@@ -54,16 +54,16 @@ export default function Home() {
           if (data.type === 'greeting') {
           console.log('👋 [BOT] GREETING reçu');
           setClaimId(data.claim_id);
-          setMessages([{ speaker: 'system', text: data.message, hasAudio: false }]);
+          setMessages([{ speaker: 'system', text: data.message, hasAudio: !!data.audio_url, audioUrl: data.audio_url || null }]);
           setStep('dialogue');
           
           // En mode appel complet, démarrer l'enregistrement directement (pas de TTS)
           if (isFullCall.current && callActive.current) {
-              console.log('🔊 [APPEL] Lecture TTS + enregistrement auto après TTS');
-              speakText(data.message, { autoRecord: true });
+              console.log('🔊 [APPEL] Lecture audio ElevenLabs + enregistrement auto après');
+              playAudio(data.audio_url, { autoRecord: true, fallbackText: data.message });
           } else {
-            console.log('💬 [MESSAGE] Mode message, TTS');
-            speakText(data.message);
+            console.log('💬 [MESSAGE] Mode message, lecture audio');
+            playAudio(data.audio_url, { fallbackText: data.message });
           }
         } else if (data.type === 'response') {
           console.log('💬 [BOT] RESPONSE reçue');
@@ -84,15 +84,15 @@ export default function Home() {
           
           if (responseText) {
             console.log('📝 [BOT] Réponse texte:', responseText.substring(0, 80));
-            setMessages(prev => [...prev, { speaker: 'system', text: responseText, hasAudio: true }]);
+            setMessages(prev => [...prev, { speaker: 'system', text: responseText, hasAudio: !!data.audio_url, audioUrl: data.audio_url || null }]);
             
             // En mode appel, lecture TTS puis enregistrement auto
             if (isFullCall.current && callActive.current) {
-              console.log('🔊 [APPEL] Lecture TTS + enregistrement auto après TTS');
-              speakText(responseText, { autoRecord: true });
+              console.log('🔊 [APPEL] Lecture audio ElevenLabs + enregistrement auto après');
+              playAudio(data.audio_url, { autoRecord: true, fallbackText: responseText });
             } else {
-              console.log('💬 [MESSAGE] Mode message, TTS');
-              speakText(responseText);
+              console.log('💬 [MESSAGE] Mode message, lecture audio');
+              playAudio(data.audio_url, { fallbackText: responseText });
             }
           }
           
@@ -153,7 +153,49 @@ export default function Home() {
       setTimeout(() => startAutoRecording(), 500);
     }
   };
+  const normalizeAudioUrl = (audioUrl) => {
+    if (!audioUrl) return null;
+    if (audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
+      return audioUrl;
+    }
+    return `${API_BASE}${audioUrl}`;
+  };
 
+  const playAudio = (audioUrl, { autoRecord = false, fallbackText = '' } = {}) => {
+    const finalUrl = normalizeAudioUrl(audioUrl);
+    if (!finalUrl) {
+      console.warn('⚠️ Pas d\'URL audio, fallback Web Speech');
+      speakText(fallbackText || 'Message reçu du serveur', { autoRecord });
+      return;
+    }
+
+    console.log('🎵 Lecture audio ElevenLabs:', finalUrl);
+    
+    const audio = new Audio(finalUrl);
+    
+    audio.onloadedmetadata = () => {
+      console.log(`🎵 Audio chargé (${audio.duration.toFixed(2)}s)`);
+    };
+    
+    audio.onended = () => {
+      console.log('✅ Audio terminé');
+      if (autoRecord) {
+        console.log('🎙️ Auto-recording après audio');
+        startAutoRecording();
+      }
+    };
+    
+    audio.onerror = (e) => {
+      console.error('❌ Erreur audio:', e);
+      console.warn('⚠️ Fallback Web Speech');
+      speakText(fallbackText || 'Erreur audio', { autoRecord });
+    };
+    
+    audio.play().catch(err => {
+      console.error('❌ Impossible de jouer audio:', err);
+      speakText(fallbackText || 'Impossible de jouer audio', { autoRecord });
+    });
+  };
   const startAutoRecording = async () => {
     try {
       console.log('🎤 [1] Demande accès microphone...');
@@ -532,7 +574,7 @@ export default function Home() {
                       <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                       {msg.hasAudio && msg.speaker === 'system' && (
                         <button
-                          onClick={() => speakText(msg.text)}
+                          onClick={() => playAudio(msg.audioUrl) }
                           className="mt-2 text-xs text-slate-400 hover:text-white flex items-center gap-1"
                         >
                           <FiVolume2 className="w-3 h-3" />
