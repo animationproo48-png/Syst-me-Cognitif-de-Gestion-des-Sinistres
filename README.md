@@ -113,6 +113,49 @@ L'application sera accessible sur `http://localhost:8501`
 
 ---
 
+## ⚛️ Lancer la version React (Next.js)
+
+### 1️⃣ Backend (FastAPI)
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+```
+✅ API: http://localhost:8000
+
+### 2️⃣ Frontend Client (React)
+```bash
+cd frontend-client
+npm install
+npm run dev
+```
+✅ Client: http://localhost:3000
+
+### 3️⃣ Frontend Advisor (React)
+```bash
+cd frontend-advisor
+npm install
+npm run dev
+```
+✅ Advisor: http://localhost:3001
+
+---
+
+## 🔑 Configuration des API Keys (Groq / LemonFox / ElevenLabs)
+
+Créer un fichier `.env` à la racine du projet :
+```bash
+WHISPER_API_KEY=YOUR_LEMONFOX_KEY
+GROQ_API_KEY=YOUR_GROQ_KEY
+ELEVENLABS_API_KEY=YOUR_ELEVENLABS_KEY
+
+# Optionnel
+OPENAI_API_KEY=YOUR_OPENAI_KEY
+GEMINI_API_KEY=YOUR_GEMINI_KEY
+```
+
+---
+
 ## 📖 Guide d'Utilisation
 
 ### Scénario 1: Nouvelle Déclaration Audio
