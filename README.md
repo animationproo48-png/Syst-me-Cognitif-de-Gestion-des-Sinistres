@@ -284,9 +284,9 @@ class ComplexityCalculator:
 ## 📞 Support & Contact
 
 **Équipe Projet:**  
-- Architecture: Senior AI Engineer
-- Domaine: Expert Assurance
-- UX: Interface Métier
+- Architecture:  AI Engineer: Badr eddine Tadlaoui
+- Domaine: Expert Assurance : Moubin 
+- UX: Interface Métier : Othman sadiki 
 
 **Documentation Technique:**  
 - Code commenté en français

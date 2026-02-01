@@ -149,6 +149,49 @@ start.bat     # Lancement rapide
 
 ---
 
+## ⚛️ Lancer la version React (Next.js)
+
+### 1️⃣ Backend (FastAPI)
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+```
+✅ API: http://localhost:8000
+
+### 2️⃣ Frontend Client (React)
+```bash
+cd frontend-client
+npm install
+npm run dev
+```
+✅ Client: http://localhost:3000
+
+### 3️⃣ Frontend Advisor (React)
+```bash
+cd frontend-advisor
+npm install
+npm run dev
+```
+✅ Advisor: http://localhost:3001
+
+---
+
+## 🔑 Configuration des API Keys (Groq / LemonFox / ElevenLabs)
+
+Créer un fichier `.env` à la racine du projet :
+```bash
+WHISPER_API_KEY=YOUR_LEMONFOX_KEY
+GROQ_API_KEY=YOUR_GROQ_KEY
+ELEVENLABS_API_KEY=YOUR_ELEVENLABS_KEY
+
+# Optionnel
+OPENAI_API_KEY=YOUR_OPENAI_KEY
+GEMINI_API_KEY=YOUR_GEMINI_KEY
+```
+
+---
+
 ## 🎬 Scénarios de Démonstration
 
 ### 1️⃣ Sinistre Simple (Score ~28/100)
@@ -225,8 +268,9 @@ Résultat: 6/6 tests réussis (100%)
 - **Data Models:** Pydantic
 - **Database:** SQLite
 - **AI/ML:** 
-  - Whisper (STT)
-  - gTTS (TTS)
+  - **LemonFox (Whisper API)** - STT
+  - **Groq (Llama 3.3)** - Analyse cognitive LLM
+  - **ElevenLabs** - TTS haute qualité
   - OpenAI GPT-4 (optionnel)
 - **Architecture:** Modulaire, SOLID principles
 
