@@ -11,6 +11,9 @@ requests>=2.31.0
 # Speech & Audio
 gtts>=2.5.0
 SpeechRecognition>=3.10.0
+librosa>=0.10.0                # Analyse audio avancée (pitch, MFCC, tempo)
+soundfile>=0.12.1              # I/O fichiers audio
+praat-parselmouth>=0.4.3       # Analyse prosodique (pitch, formants)
 
 # Whisper (optionnel - pour modèle local)
 # openai-whisper>=20231117

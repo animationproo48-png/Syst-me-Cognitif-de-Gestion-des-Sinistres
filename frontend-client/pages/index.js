@@ -4,6 +4,7 @@ import { FiMic, FiCheckCircle, FiAlertCircle, FiSend, FiUpload, FiVolume2, FiSto
 import axios from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const WS_BASE = API_BASE.replace(/^http/i, 'ws');
 
 export default function Home() {
   const [step, setStep] = useState('welcome'); // welcome, dialogue, summary
@@ -44,64 +45,29 @@ export default function Home() {
     try {
       // Connexion WebSocket
       ws.current = new WebSocket(
-        `ws://localhost:8000/ws/conversation/${sessionId}`
+        `${WS_BASE}/ws/conversation/${sessionId}`
       );
 
       ws.current.onmessage = (event) => {
         console.log('📨 [BOT] Message reçu:', event.data.substring(0, 100));
         const data = JSON.parse(event.data);
-        
-          if (data.type === 'greeting') {
-          console.log('👋 [BOT] GREETING reçu');
-          setClaimId(data.claim_id);
-          setMessages([{ speaker: 'system', text: data.message, hasAudio: !!data.audio_url, audioUrl: data.audio_url || null }]);
+
+        const messageText = typeof data.message === 'string'
+          ? data.message
+          : data.message?.message || data.message?.text || '';
+
+        if (data.sinistre_id) {
+          setClaimId(data.sinistre_id);
+        }
+
+        if (messageText) {
+          setMessages(prev => [...prev, { speaker: 'system', text: messageText, hasAudio: !!data.audio_url, audioUrl: data.audio_url || null }]);
           setStep('dialogue');
-          
-          // En mode appel complet, démarrer l'enregistrement directement (pas de TTS)
+
           if (isFullCall.current && callActive.current) {
-              console.log('🔊 [APPEL] Lecture audio ElevenLabs + enregistrement auto après');
-              playAudio(data.audio_url, { autoRecord: true, fallbackText: data.message });
+            playAudio(data.audio_url, { autoRecord: true, fallbackText: messageText });
           } else {
-            console.log('💬 [MESSAGE] Mode message, lecture audio');
-            playAudio(data.audio_url, { fallbackText: data.message });
-          }
-        } else if (data.type === 'response') {
-          console.log('💬 [BOT] RESPONSE reçue');
-          let responseText = '';
-          
-          // Si c'est la première réponse après description (LAMA complet)
-          if (data.acknowledge && data.summary) {
-            responseText = `${data.acknowledge}\n\n${data.summary}\n\n${data.next_question || ''}`;
-          } 
-          // Si c'est une simple progression (collecte d'infos)
-          else if (data.message) {
-            responseText = data.message;
-          }
-          // Sinon juste la question
-          else if (data.next_question) {
-            responseText = data.next_question;
-          }
-          
-          if (responseText) {
-            console.log('📝 [BOT] Réponse texte:', responseText.substring(0, 80));
-            setMessages(prev => [...prev, { speaker: 'system', text: responseText, hasAudio: !!data.audio_url, audioUrl: data.audio_url || null }]);
-            
-            // En mode appel, lecture TTS puis enregistrement auto
-            if (isFullCall.current && callActive.current) {
-              console.log('🔊 [APPEL] Lecture audio ElevenLabs + enregistrement auto après');
-              playAudio(data.audio_url, { autoRecord: true, fallbackText: responseText });
-            } else {
-              console.log('💬 [MESSAGE] Mode message, lecture audio');
-              playAudio(data.audio_url, { fallbackText: responseText });
-            }
-          }
-          
-          // Si conversation terminée
-          if (data.completed) {
-            console.log('✅ [BOT] Conversation TERMINÉE');
-            setTimeout(() => {
-              alert('✅ Déclaration complète! Votre dossier sera traité rapidement.');
-            }, 2000);
+            playAudio(data.audio_url, { fallbackText: messageText });
           }
         }
       };
@@ -368,7 +334,6 @@ export default function Home() {
         if (ws.current?.readyState === WebSocket.OPEN) {
           console.log('✅ [16] WebSocket OPEN, envoi message');
           ws.current.send(JSON.stringify({
-            type: 'user_text',
             text: transcript
           }));
         } else {
@@ -417,7 +382,6 @@ export default function Home() {
         // Envoyer au WebSocket
         if (ws.current?.readyState === WebSocket.OPEN) {
           ws.current.send(JSON.stringify({
-            type: 'user_text',
             text: transcript
           }));
         }
@@ -442,7 +406,6 @@ export default function Home() {
     try {
       if (ws.current?.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({
-          type: 'user_text',
           text
         }));
       }

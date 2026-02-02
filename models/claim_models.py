@@ -1,229 +1,263 @@
 """
-Modèles de données Pydantic pour le système de gestion cognitive des sinistres.
-Représente le Digital Twin d'un sinistre dans le CRM.
+Modèles de données Pydantic CRM Production.
+Digital Twin complet d'un sinistre avec gestion client, contrat, remboursement.
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+import uuid
 
+# ==================== ENUMS ====================
 
-class ClaimType(str, Enum):
-    """Types de sinistres supportés"""
-    AUTO = "automobile"
-    HOME = "habitation"
-    HEALTH = "santé"
-    LIFE = "vie"
-    LIABILITY = "responsabilité_civile"
-    TRAVEL = "voyage"
-    UNKNOWN = "indéterminé"
+class CiviliteEnum(str, Enum):
+    M = "Monsieur"
+    MME = "Madame"
+    MLLE = "Mademoiselle"
 
+class TypeSinistreEnum(str, Enum):
+    COLLISION = "collision"
+    VOL = "vol"
+    INCENDIE = "incendie"
+    DEGATS = "dégâts"
+    BLESSURE = "blessure"
+    DOMMAGE_MATERIEL = "dommage_materiel"
 
-class ClaimState(str, Enum):
-    """États possibles d'un sinistre"""
-    RECEIVED = "reçu"
-    ANALYZING = "en_analyse"
-    PENDING_DOCS = "documents_manquants"
-    AUTONOMOUS = "traitement_autonome"
-    ESCALATED = "escaladé_conseiller"
-    RESOLVED = "résolu"
-    REJECTED = "rejeté"
+class StatusDossierEnum(str, Enum):
+    NOUVEAU = "nouveau"
+    EN_COURS = "en_cours"
+    EXPERT = "expert"
+    VALIDATION = "validation"
+    ESCALADE = "escalade"
+    EN_ATTENTE_CLIENT = "en_attente_client"
+    FERME = "fermé"
 
+class TypeTraitementEnum(str, Enum):
+    AUTONOME = "autonome"
+    ESCALADE = "escalade"
+    EXPERT = "expert"
 
-class ComplexityLevel(str, Enum):
-    """Niveaux de complexité"""
-    SIMPLE = "simple"
-    MODERATE = "modéré"
-    COMPLEX = "complexe"
-    CRITICAL = "critique"
+class StatusRemboursementEnum(str, Enum):
+    EN_ATTENTE = "en_attente"
+    ACCEPTE = "accepté"
+    PAYE = "payé"
+    REJETE = "rejeté"
 
+class ConversationPhaseEnum(str, Enum):
+    AUTHENTIFICATION = "authentification"
+    DESCRIPTION = "description"
+    SINISTRE_DETAILS = "sinistre_details"
+    CONSTAT = "constat"
+    DOCUMENTS = "documents"
+    DECISION = "decision"
+    TRANSFERT = "transfert"
+    SUIVI = "suivi"
 
-class Party(BaseModel):
-    """Représente une partie impliquée dans le sinistre"""
-    name: Optional[str] = None
-    role: str  # assuré, tiers, témoin, expert, etc.
-    contact: Optional[str] = None
-    involvement: Optional[str] = None
+# ==================== MODELS ====================
 
+# --- CLIENT ---
+class ClientBase(BaseModel):
+    matricule: str = Field(..., min_length=5, max_length=20, description="Matricule unique assuré")
+    civilite: Optional[CiviliteEnum] = None
+    nom: str = Field(..., min_length=2, max_length=100)
+    prenom: str = Field(..., min_length=2, max_length=100)
+    date_naissance: Optional[datetime] = None
+    email: Optional[EmailStr] = None
+    telephone: Optional[str] = Field(None, max_length=20)
+    adresse: Optional[str] = None
+    code_postal: Optional[str] = Field(None, max_length=10)
+    ville: Optional[str] = None
 
-class Document(BaseModel):
-    """Document mentionné ou requis"""
-    type: str  # constat, facture, rapport médical, etc.
-    status: str  # mentionné, reçu, manquant
-    description: Optional[str] = None
-    required: bool = True
+class ClientCreate(ClientBase):
+    pass
 
+class ClientUpdate(BaseModel):
+    civilite: Optional[CiviliteEnum] = None
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    email: Optional[EmailStr] = None
+    telephone: Optional[str] = None
+    adresse: Optional[str] = None
+    code_postal: Optional[str] = None
+    ville: Optional[str] = None
 
-class AmbiguityFlag(BaseModel):
-    """Zones d'ambiguïté ou d'incertitude"""
-    category: str  # temporelle, factuelle, contractuelle, émotionnelle
+class Client(ClientBase):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    date_creation: datetime
+    statut: str = "actif"
+
+    class Config:
+        from_attributes = True
+
+# --- CONTRAT ---
+class ContratBase(BaseModel):
+    numero_contrat: str
+    type_contrat: str = Field(..., description="auto, habitation, etc")
+    date_souscription: datetime
+    date_expiration: datetime
+    statut: str = "actif"
+    garanties: List[str] = []
+    franchise_tiers: float = 0
+    franchise_tiers_collision: float = 0
+    couverture_dommage_materiel: bool = True
+    couverture_tiers: bool = True
+    couverture_rc_civile: bool = True
+
+class Contrat(ContratBase):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    client_id: str
+    date_creation: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- SINISTRE (DOSSIER) ---
+class SinistreBase(BaseModel):
+    client_id: str
+    contrat_id: str
+    date_sinistre: datetime
+    type_sinistre: TypeSinistreEnum
     description: str
-    severity: int = Field(ge=1, le=5)  # 1=faible, 5=critique
-    impact_on_decision: str
+    lieu: Optional[str] = None
+    tiers_implique: bool = False
+    nom_tiers: Optional[str] = None
+    contact_tiers: Optional[str] = None
+    tiers_responsable: Optional[bool] = None
+    constat_amiable: bool = False
+    numero_constat: Optional[str] = None
+    police_intervenue: bool = False
+    numero_proces_verbal: Optional[str] = None
+    estimation_dommage: Optional[float] = None
+    photo_urls: List[str] = []
+
+class SinistreCreate(SinistreBase):
+    pass
+
+class SinistreUpdate(BaseModel):
+    description: Optional[str] = None
+    type_sinistre: Optional[TypeSinistreEnum] = None
+    tiers_implique: Optional[bool] = None
+    constat_amiable: Optional[bool] = None
+    police_intervenue: Optional[bool] = None
+    estimation_dommage: Optional[float] = None
+    photo_urls: Optional[List[str]] = None
+    cci_score: Optional[int] = None
+    status_dossier: Optional[StatusDossierEnum] = None
+    type_traitement: Optional[TypeTraitementEnum] = None
+
+class Sinistre(SinistreBase):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    numero_sinistre: str
+    cci_score: int = 0
+    status_dossier: StatusDossierEnum = StatusDossierEnum.NOUVEAU
+    type_traitement: Optional[TypeTraitementEnum] = None
+    conseiller_affecte_id: Optional[str] = None
+    date_creation: datetime
+    date_modification: datetime
+    date_fermeture: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# --- HISTORIQUE CONVERSATION ---
+class MessageConversation(BaseModel):
+    sinistre_id: str
+    role: str = Field(..., description="bot, user, system")
+    texte: str
+    texte_stt: Optional[str] = None
+    confiance_stt: Optional[float] = Field(None, ge=0, le=1)
+    audio_url: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Optional[Dict[str, Any]] = None
+
+class HistoriqueConversation(MessageConversation):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    class Config:
+        from_attributes = True
+
+# --- REMBOURSEMENT ---
+class RemboursementBase(BaseModel):
+    sinistre_id: str
+    montant_reclame: float
+    franchise_appliquee: float = 0
+    montant_accepte: Optional[float] = None
+    motif_rejet: Optional[str] = None
+    moyen_paiement: Optional[str] = None
+
+class RemboursementCreate(RemboursementBase):
+    pass
+
+class RemboursementUpdate(BaseModel):
+    montant_accepte: Optional[float] = None
+    montant_reclame: Optional[float] = None
+    statut: Optional[StatusRemboursementEnum] = None
+    date_paiement: Optional[datetime] = None
+
+class Remboursement(RemboursementBase):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    statut: StatusRemboursementEnum = StatusRemboursementEnum.EN_ATTENTE
+    date_acceptation: Optional[datetime] = None
+    date_paiement: Optional[datetime] = None
+    date_creation: datetime
+
+    class Config:
+        from_attributes = True
 
 
+# --- TRANSCRIPTION METADATA ---
 class TranscriptMetadata(BaseModel):
-    """Métadonnées de la transcription audio"""
     original_transcript: str
-    normalized_transcript: str
-    language: str
-    confidence_score: float = Field(ge=0.0, le=1.0)
-    emotional_markers: List[str] = Field(default_factory=list)
-    hesitations: int = 0
+    normalized_transcript: Optional[str] = None
+    language: Optional[str] = None
+    confidence_score: Optional[float] = None
+    emotional_markers: Optional[List[str]] = None
+    hesitations: Optional[int] = None
     duration_seconds: Optional[float] = None
 
+# --- CONTEXTE CONVERSATION ---
+class ContexteConversation(BaseModel):
+    sinistre_id: str
+    client_id: str
+    phase_actuelle: ConversationPhaseEnum = ConversationPhaseEnum.AUTHENTIFICATION
+    data_collectee: Dict[str, Any] = {}
+    messages: List[MessageConversation] = []
+    cci_score: int = 0
+    decision: Optional[TypeTraitementEnum] = None
+    timestamp_debut: datetime = Field(default_factory=datetime.utcnow)
 
-class ComplexityBreakdown(BaseModel):
-    """Décomposition détaillée du score de complexité"""
-    guarantees_score: float = 0.0
-    third_party_score: float = 0.0
-    missing_docs_score: float = 0.0
-    ambiguity_score: float = 0.0
-    emotional_score: float = 0.0
-    inconsistency_score: float = 0.0
-    total_score: float = 0.0
-    level: ComplexityLevel = ComplexityLevel.SIMPLE
-    explanation: str = ""
+# --- SUIVI DOSSIER (CLIENT VIEW) ---
+class ActionDossier(BaseModel):
+    id: str
+    type_action: str
+    description: str
+    priorite: str
+    statut: str
+    date: datetime
 
+class SuiviDossierClient(BaseModel):
+    numero_sinistre: str
+    date_sinistre: datetime
+    status_dossier: StatusDossierEnum
+    description_breve: str
+    type_sinistre: TypeSinistreEnum
+    actions_en_cours: List[ActionDossier] = []
+    remboursement: Optional[Remboursement] = None
+    dernier_message: Optional[str] = None
+    dernier_contact: Optional[datetime] = None
 
-class CognitiveClaimStructure(BaseModel):
-    """Structure cognitive du sinistre extraite de la transcription"""
-    claim_type: ClaimType
-    claim_type_confidence: float = Field(ge=0.0, le=1.0)
-    
-    # Éléments factuels
-    date_incident: Optional[str] = None
-    location: Optional[str] = None
-    parties_involved: List[Party] = Field(default_factory=list)
-    damages_description: str = ""
-    
-    # Éléments documentaires
-    mentioned_documents: List[Document] = Field(default_factory=list)
-    missing_information: List[str] = Field(default_factory=list)
-    
-    # Analyse cognitive
-    facts: List[str] = Field(default_factory=list)
-    assumptions: List[str] = Field(default_factory=list)
-    ambiguities: List[AmbiguityFlag] = Field(default_factory=list)
-    
-    # Timeline
-    timeline_events: List[Dict[str, str]] = Field(default_factory=list)
-    
-    # Métadonnées émotionnelles
-    emotional_stress_level: int = Field(default=0, ge=0, le=10)
-    emotional_keywords: List[str] = Field(default_factory=list)
+# --- ESCALADE ---
+class EscaladeRequest(BaseModel):
+    sinistre_id: str
+    raison: str
+    cci_score: int
+    messages_context: List[MessageConversation] = []
 
-
-class InteractionLog(BaseModel):
-    """Log d'une interaction avec le système"""
-    timestamp: datetime = Field(default_factory=datetime.now)
-    interaction_type: str  # audio_input, system_response, escalation, etc.
-    content: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class ClaimDigitalTwin(BaseModel):
-    """Le Digital Twin complet d'un sinistre - Cœur du CRM"""
-    
-    # Identifiants
-    claim_id: str
-    created_at: datetime = Field(default_factory=datetime.now)
-    last_updated: datetime = Field(default_factory=datetime.now)
-    
-    # État actuel
-    current_state: ClaimState = ClaimState.RECEIVED
-    
-    # Données sources
-    transcript_metadata: Optional[TranscriptMetadata] = None
-    cognitive_structure: Optional[CognitiveClaimStructure] = None
-    
-    # Analyse de complexité
-    complexity: Optional[ComplexityBreakdown] = None
-    
-    # Historique et traçabilité
-    interaction_history: List[InteractionLog] = Field(default_factory=list)
-    state_history: List[Dict[str, Any]] = Field(default_factory=list)
-    
-    # Décision et escalade
-    is_escalated: bool = False
-    escalation_reason: Optional[str] = None
-    assigned_advisor: Optional[str] = None
-    
-    # Métadonnées
-    confidence_level: float = Field(default=0.0, ge=0.0, le=1.0)
-    risk_indicators: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    
-    def add_interaction(self, interaction_type: str, content: str, metadata: Dict = None):
-        """Ajoute une interaction à l'historique"""
-        log = InteractionLog(
-            interaction_type=interaction_type,
-            content=content,
-            metadata=metadata or {}
-        )
-        self.interaction_history.append(log)
-        self.last_updated = datetime.now()
-    
-    def change_state(self, new_state: ClaimState, reason: str = ""):
-        """Change l'état du sinistre avec traçabilité"""
-        self.state_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "from_state": self.current_state.value,
-            "to_state": new_state.value,
-            "reason": reason
-        })
-        self.current_state = new_state
-        self.last_updated = datetime.now()
-    
-    def escalate(self, reason: str, advisor: str = "Conseiller Expert"):
-        """Escalade le sinistre à un conseiller humain"""
-        self.is_escalated = True
-        self.escalation_reason = reason
-        self.assigned_advisor = advisor
-        self.change_state(ClaimState.ESCALATED, reason)
-
-
-class ClientSummary(BaseModel):
-    """Résumé pour le client (clair et actionnable)"""
-    claim_id: str
-    status: str
-    next_steps: List[str]
-    documents_required: List[str]
-    estimated_processing_time: str
-    contact_info: str
-    message: str
-
-
-class AdvisorBrief(BaseModel):
-    """Brief structuré pour le conseiller (expertise)"""
-    claim_id: str
-    claim_type: str
-    complexity_score: float
-    complexity_level: str
-    
-    # Vue structurée
-    structured_facts: List[str]
-    unresolved_ambiguities: List[Dict[str, Any]]
-    risk_flags: List[str]
-    
-    # Recommandations
-    suggested_actions: List[str]
-    priority_level: str
-    estimated_effort: str
-    
-    # Contexte
-    emotional_context: str
-    client_stress_level: int
-
-
-class ManagementSummary(BaseModel):
-    """Résumé pour le management (KPIs et décision)"""
-    claim_id: str
-    claim_type: str
-    complexity_score: float
-    escalation_reason: str
-    risk_indicators: List[str]
-    processing_status: str
-    estimated_cost_impact: str
-    requires_attention: bool
+class EscaladeResponse(BaseModel):
+    escalade_id: str
+    sinistre_id: str
+    timestamp: datetime
+    status: str = "en_attente"
+    conseiller_assigne: Optional[str] = None
+    message_client: str = "Je vais vous transférer vers un conseiller spécialisé..."

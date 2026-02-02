@@ -199,9 +199,9 @@ class TTSEngine:
             return output_path
             
         except Exception as e:
-            print(f"⚠️ ElevenLabs échoué ({str(e)[:60]}...), fallback pyttsx3...")
-            self.engine = "pyttsx3"
-            return self._synthesize_pyttsx3(text, output_path)
+            print(f"⚠️ ElevenLabs échoué: {str(e)}")
+            print(f"📋 Fallback vers gTTS...")
+            return self._synthesize_gtts(text, output_path)
     
     def _synthesize_pyttsx3(self, text: str, output_path: str) -> str:
         """Synthèse avec pyttsx3 (offline, très fiable)"""

@@ -21,6 +21,7 @@ from modules.decision_engine import DecisionEngine
 from modules.summary_generator import SummaryGenerator
 from modules.crm_system import get_crm
 from modules.conversation_manager import ConversationManager, ConversationPhase
+from modules.emotion_integration import process_audio_with_emotion_analysis, format_emotion_for_response, get_emotion_label_fr
 from models.claim_models import ClaimDigitalTwin, ClaimState
 
 
@@ -213,6 +214,33 @@ def page_new_declaration():
                     stt_engine = STTEngine()
                     transcript_metadata = stt_engine.transcribe_audio(str(audio_path), lang_code)
                     
+                    # NOUVEAU: Analyse émotionnelle automatique
+                    with st.spinner("🎭 Analyse émotionnelle en cours..."):
+                        client_id = st.session_state.get('current_client_id', None)
+                        sinistre_id = st.session_state.get('current_sinistre_id', None)
+                        
+                        emotion_data = process_audio_with_emotion_analysis(
+                            str(audio_path),
+                            transcript_metadata.text,
+                            client_id=client_id,
+                            sinistre_id=sinistre_id,
+                            save_audio=True
+                        )
+                        
+                        # Stocker l'émotion dans session state
+                        st.session_state['last_emotion'] = emotion_data
+                        
+                        # Afficher badge émotionnel si émotion forte détectée
+                        emotion = emotion_data['dominant_emotion']['label']
+                        confidence = emotion_data['dominant_emotion']['confidence']
+                        
+                        if confidence > 60:
+                            emotion_fr = get_emotion_label_fr(emotion)
+                            if emotion in ['anger', 'stress']:
+                                st.warning(f"⚠️ **Émotion détectée**: {emotion_fr} ({confidence:.0f}%) - Approche empathique recommandée")
+                            elif emotion in ['sadness', 'fear']:
+                                st.info(f"💙 **Émotion détectée**: {emotion_fr} ({confidence:.0f}%) - Accompagnement renforcé")
+                    
                     process_claim(transcript_metadata)
     
     elif input_mode == "🎤 Enregistrement direct":
@@ -341,9 +369,21 @@ def process_claim(transcript_metadata):
         status_text.text("🔊 Génération de la réponse audio...")
         progress_bar.progress(95)
         
+        # NOUVEAU: Adapter le message selon l'émotion détectée
+        emotion_prefix = ""
+        if 'last_emotion' in st.session_state:
+            emotion_prefix = format_emotion_for_response(st.session_state['last_emotion'])
+        
+        # Ajouter le préfixe empathique au résumé client
+        if emotion_prefix:
+            client_summary_dict = client_summary.dict()
+            client_summary_dict['message'] = emotion_prefix + client_summary_dict.get('message', '')
+        else:
+            client_summary_dict = client_summary.dict()
+        
         audio_response_path = create_client_response(
             claim_id,
-            client_summary.dict(),
+            client_summary_dict,
             language=transcript_metadata.language
         )
         
@@ -388,45 +428,82 @@ def display_claim_results():
     st.markdown("---")
     st.markdown("## 📊 Résultats du Traitement")
     
-    # En-tête du sinistre
-    col1, col2, col3, col4 = st.columns(4)
+    # En-tête du sinistre avec émotion
+    cols_count = 5 if 'last_emotion' in st.session_state else 4
+    cols = st.columns(cols_count)
     
-    with col1:
+    with cols[0]:
         st.metric("ID Sinistre", claim.claim_id)
     
-    with col2:
+    with cols[1]:
         complexity_class = f"complexity-{claim.complexity.level.value}"
         st.markdown(f"**Complexité**")
         st.markdown(f'<p class="{complexity_class}" style="font-size: 1.5rem;">{claim.complexity.total_score:.1f}/100</p>', 
                     unsafe_allow_html=True)
     
-    with col3:
-        st.metric("Type", claim.cognitive_structure.claim_type.value.title())
+    with cols[2]:
+        st.markdown("**État**")
+        state_icon = "🎯" if claim.current_state == ClaimState.AUTONOMOUS else "⚠️"
+        st.markdown(f"{state_icon} {claim.current_state.value}")
     
-    with col4:
-        status_icon = "🔴" if claim.is_escalated else "🟢"
-        st.metric("Statut", f"{status_icon} {claim.current_state.value}")
+    with cols[3]:
+        st.markdown("**Décision**")
+        decision_text = "Escalade" if claim.escalation_needed else "Autonome"
+        st.markdown(f"🔄 {decision_text}")
     
-    # Tabs pour les différentes vues
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # NOUVEAU: Afficher l'émotion si disponible
+    if 'last_emotion' in st.session_state and cols_count == 5:
+        with cols[4]:
+            emotion_data = st.session_state['last_emotion']
+            emotion = emotion_data['dominant_emotion']['label']
+            confidence = emotion_data['dominant_emotion']['confidence']
+            emotion_fr = get_emotion_label_fr(emotion)
+            
+            emotion_icons = {
+                'anger': '😡',
+                'stress': '😰',
+                'sadness': '😢',
+                'fear': '😨',
+                'frustration': '😤',
+                'neutral': '😐'
+            }
+            
+            st.markdown("**Émotion Client**")
+            st.markdown(f"{emotion_icons.get(emotion, '😐')} {emotion_fr} ({confidence:.0f}%)")
+    
+    # Tabs pour les différentes vues (ajout tab émotions)
+    tabs_list = [
         "📝 Transcription", 
         "🧠 Analyse Cognitive", 
         "👤 Résumé Client",
         "👨‍💼 Brief Conseiller",
         "🔊 Réponse Audio"
-    ])
+    ]
     
-    with tab1:
+    if 'last_emotion' in st.session_state:
+        tabs_list.append("🎭 Analyse Émotionnelle")
+    
+    tabs = st.tabs(tabs_list)
+    
+    with tabs[0]:
         render_transcription_tab(claim)
     
-    with tab2:
+    with tabs[1]:
         render_cognitive_tab(claim)
     
-    with tab3:
+    with tabs[2]:
         render_client_summary_tab(client_summary)
     
-    with tab4:
+    with tabs[3]:
         render_advisor_tab(advisor_brief)
+    
+    with tabs[4]:
+        render_audio_response_tab()
+    
+    # NOUVEAU: Tab analyse émotionnelle
+    if 'last_emotion' in st.session_state and len(tabs) > 5:
+        with tabs[5]:
+            render_emotion_tab(st.session_state['last_emotion'])
     
     with tab5:
         render_audio_response_tab()
@@ -612,6 +689,97 @@ def render_audio_response_tab():
                 file_name=f"reponse_{st.session_state.current_claim.claim_id}.mp3",
                 mime="audio/mp3"
             )
+
+
+def render_emotion_tab(emotion_data):
+    """NOUVEAU: Affiche l'analyse émotionnelle détaillée"""
+    st.markdown("### 🎭 Analyse Émotionnelle Détaillée")
+    
+    emotion = emotion_data['dominant_emotion']['label']
+    confidence = emotion_data['dominant_emotion']['confidence']
+    fused_scores = emotion_data['fused_scores']
+    alert_level = emotion_data['alert_level']
+    interpretation = emotion_data['interpretation']
+    
+    # Alerte si émotion critique
+    if alert_level == 'critical':
+        st.error("🚨 **ALERTE CRITIQUE** - Client en détresse majeure, intervention immédiate recommandée")
+    elif alert_level == 'high':
+        st.warning("⚠️ **ALERTE HAUTE** - Client fortement affecté, approche empathique requise")
+    elif alert_level == 'medium':
+        st.info("💙 **ATTENTION** - Client en difficulté, accompagnement renforcé conseillé")
+    
+    # Métriques émotionnelles
+    cols = st.columns(3)
+    
+    with cols[0]:
+        emotion_fr = get_emotion_label_fr(emotion)
+        emotion_icon = {'anger': '😡', 'stress': '😰', 'sadness': '😢', 'fear': '😨', 'frustration': '😤', 'neutral': '😐'}
+        st.metric("Émotion dominante", f"{emotion_icon.get(emotion, '😐')} {emotion_fr}", f"{confidence:.1f}%")
+    
+    with cols[1]:
+        st.metric("Niveau d'alerte", alert_level.upper())
+    
+    with cols[2]:
+        priority = "🔴 URGENT" if alert_level in ['critical', 'high'] else "🟡 NORMAL" if alert_level == 'medium' else "🟢 STABLE"
+        st.metric("Priorité traitement", priority)
+    
+    # Scores détaillés
+    st.markdown("#### 📊 Scores Émotionnels Détaillés")
+    
+    import pandas as pd
+    scores_df = pd.DataFrame([
+        {
+            "Émotion": get_emotion_label_fr(k),
+            "Score": f"{v:.1f}%",
+            "Niveau": "🔴 Élevé" if v > 70 else "🟡 Modéré" if v > 40 else "🟢 Faible"
+        }
+        for k, v in fused_scores.items()
+    ]).sort_values('Score', ascending=False)
+    
+    st.dataframe(scores_df, use_container_width=True)
+    
+    # Interprétation
+    st.markdown("#### 💡 Interprétation et Recommandations")
+    st.info(interpretation)
+    
+    # Recommandations d'action
+    st.markdown("#### 🎯 Actions Recommandées")
+    
+    if emotion == 'anger':
+        st.markdown("""
+        - ✅ Reconnaître immédiatement la frustration du client
+        - ✅ S'excuser pour tout désagrément causé
+        - ✅ Proposer une solution concrète et rapide
+        - ✅ Assigner un conseiller senior si disponible
+        - ✅ Suivi personnalisé dans les 24h
+        """)
+    elif emotion == 'stress':
+        st.markdown("""
+        - ✅ Rassurer sur les délais de traitement
+        - ✅ Fournir un calendrier précis des étapes
+        - ✅ Offrir un canal de communication direct
+        - ✅ Traiter en priorité
+        - ✅ Envoi de notifications régulières sur l'avancement
+        """)
+    elif emotion == 'sadness':
+        st.markdown("""
+        - ✅ Approche empathique et bienveillante
+        - ✅ Écoute active des préoccupations
+        - ✅ Accompagnement personnalisé
+        - ✅ Proposer assistance supplémentaire
+        - ✅ Vérifier compréhension des informations
+        """)
+    elif emotion == 'fear':
+        st.markdown("""
+        - ✅ Rassurer sur le processus
+        - ✅ Expliquer clairement chaque étape
+        - ✅ Garantir transparence totale
+        - ✅ Proposer FAQ ou guide
+        - ✅ Point de contact dédié
+        """)
+    else:
+        st.markdown("✅ Traitement standard - Client dans un état émotionnel neutre")
 
 
 def page_crm_dashboard():

@@ -18,7 +18,14 @@ env/
 data/claims_crm.db
 data/temp_audio/*
 data/audio_responses/*
+data/recordings/
 !data/.gitkeep
+
+# Databases
+*.db
+
+# Environment (production)
+backend/.env.production
 
 # Environment
 .env
