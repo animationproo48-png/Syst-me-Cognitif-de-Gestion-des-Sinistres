@@ -354,9 +354,10 @@ cognitive_engine = CognitiveClaimEngine(
 
 **Équipe Projet:**
 - **AI Product Lead – Cognitive & Agentic Systems/:** Badr Eddine Tadlaoui
-- **AI Consultant-dev/:** Badr Eddine Tadlaoui
-- **Expert Assurance:** Ilias ould meskour
+- **AI Consultant-dev/:** Moncif Litniti
+- **Expert Assurance:** Mobine el Hajji
 - **UX/Interface:** Othman Sadiki
+
 
 ---
 
